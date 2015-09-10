@@ -1,10 +1,10 @@
-import asyncio
-import selectors
 import types
-from asyncio.selector_events import _SelectorSocketTransport
-from asyncio.log import logger
 
+import asyncio
 import redis
+
+from asyncio.log import logger
+from asyncio.selector_events import _SelectorSocketTransport
 
 
 def _make_pubsub_socket_transport(self, sock, protocol, waiter=None, *,
@@ -25,7 +25,6 @@ class _PubsubSelectorSocketTransport(_SelectorSocketTransport):
             if isinstance(message['data'], bytes):
                 self._protocol.data_received(message['data'])
         else:
-            return
             if self._loop.get_debug():
                 logger.debug("%r received EOF", self)
             keep_open = self._protocol.eof_received()
@@ -37,19 +36,27 @@ class _PubsubSelectorSocketTransport(_SelectorSocketTransport):
             else:
                 self.close()
 
-pubsub = redis.StrictRedis('172.100.102.101').pubsub()
-pubsub.subscribe('test')
 
-
-loop = asyncio.get_event_loop()
-loop.set_debug(True)
-loop._make_socket_transport = types.MethodType(_make_pubsub_socket_transport, loop)
-
-
-async def foo(pubsub):
-    reader, writer = await asyncio.open_connection(sock=pubsub.connection._sock, loop=loop)
+@asyncio.coroutine
+def foo(pubsub, loop):
+    reader, writer = yield from asyncio.open_connection(sock=pubsub.connection._sock, loop=loop)
     reader._transport._pubsub = pubsub
-    for i in range(2):
-        message = await reader.read(256)
+    while not reader.at_eof():
+        message = yield from reader.read(256)
         print('message: {}, type:{}'.format(message.decode(), type(message)))
-    return
+    writer.close()
+
+
+def main():
+    pubsub = redis.StrictRedis('127.0.0.1').pubsub()
+    pubsub.subscribe('test')
+
+    loop = asyncio.get_event_loop()
+    loop._make_socket_transport = types.MethodType(_make_pubsub_socket_transport, loop)
+
+    task_foo = loop.create_task(foo(pubsub))
+    loop.run_until_complete(task_foo)
+    # loop.run_forever()
+
+if __name__ == '__main__':
+    main()
