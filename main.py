@@ -42,19 +42,19 @@ def foo(pubsub, loop):
     reader, writer = yield from asyncio.open_connection(sock=pubsub.connection._sock, loop=loop)
     reader._transport._pubsub = pubsub
     while not reader.at_eof():
-        message = yield from reader.read(256)
+        message = yield from reader.read(1024)
         print('message: {}, type:{}'.format(message.decode(), type(message)))
     writer.close()
 
 
 def main():
-    pubsub = redis.StrictRedis('127.0.0.1').pubsub()
-    pubsub.subscribe('test')
-
     loop = asyncio.get_event_loop()
     loop._make_socket_transport = types.MethodType(_make_pubsub_socket_transport, loop)
 
-    task_foo = loop.create_task(foo(pubsub))
+    pubsub = redis.StrictRedis('127.0.0.1').pubsub()
+    pubsub.subscribe('test')
+
+    task_foo = loop.create_task(foo(pubsub, loop))
     loop.run_until_complete(task_foo)
     # loop.run_forever()
 
